@@ -543,6 +543,79 @@ async def analyze_startup(startup_id: str):
     }
 
 
+# ==================== EXPRESS INTEREST ====================
+class InterestRequest(BaseModel):
+    startup_id: str
+    message: Optional[str] = None
+
+@api_router.post("/interests")
+async def express_interest(data: InterestRequest, token: str = ""):
+    """Investor expresses interest in a startup."""
+    investor = {}
+    if token:
+        if supabase:
+            session = supabase.table("sessions").select("user_email").eq("token", token).execute()
+            if session.data:
+                email = session.data[0]["user_email"]
+                user_res = supabase.table("users").select("*").eq("email", email).execute()
+                if user_res.data:
+                    investor = user_res.data[0]
+        elif token in sessions_db:
+            email = sessions_db[token]
+            investor = users_db.get(email, {})
+
+    if not investor:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    interest = {
+        "id": str(uuid.uuid4()),
+        "startup_id": data.startup_id,
+        "investor_name": investor.get("full_name", "Anonymous"),
+        "investor_email": investor.get("email", ""),
+        "message": data.message or "Interested in investing",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if supabase:
+        supabase.table("interests").insert(interest).execute()
+    logger.info(f"Interest expressed: {investor.get('email')} -> {data.startup_id}")
+    return {"status": "sent", "interest": interest}
+
+
+@api_router.get("/interests/{startup_id}")
+async def get_interests(startup_id: str):
+    """Get all investor interests for a startup."""
+    if supabase:
+        result = supabase.table("interests").select("*").eq("startup_id", startup_id).order("created_at", desc=True).execute()
+        return result.data
+    return []
+
+
+@api_router.get("/my-interests")
+async def my_startup_interests(token: str = ""):
+    """Founder sees all interests across their startups."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Login required")
+    if supabase:
+        session = supabase.table("sessions").select("user_email").eq("token", token).execute()
+        if not session.data:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        email = session.data[0]["user_email"]
+        # Get founder's startups
+        startups = supabase.table("startups").select("id,name").eq("founder_email", email).execute()
+        if not startups.data:
+            return []
+        startup_ids = [s["id"] for s in startups.data]
+        # Get all interests for those startups
+        interests = supabase.table("interests").select("*").in_("startup_id", startup_ids).order("created_at", desc=True).execute()
+        # Attach startup name
+        name_map = {s["id"]: s["name"] for s in startups.data}
+        for i in interests.data:
+            i["startup_name"] = name_map.get(i["startup_id"], "Unknown")
+        return interests.data
+    return []
+
+
 # ==================== HEALTH ====================
 @app.get("/")
 async def root():

@@ -11,8 +11,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
   Brain, Rocket, TrendingUp, Shield, Zap, DollarSign, Target, AlertTriangle,
-  Flame, Clock, Users, BarChart3, ArrowLeft
+  Flame, Clock, Users, BarChart3, ArrowLeft, Mail, Send, CheckCircle
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -235,6 +236,79 @@ function StartupFounderForm({ onRun, loading }) {
 
 
 // ==================== INVESTOR VIEW — Browse & Analyze Startups ====================
+function ConnectCard({ startup }) {
+  const [message, setMessage] = useState('');
+  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      const token = sessionStorage.getItem('nexvest_token') || '';
+      await axios.post(`${API}/interests?token=${token}`, {
+        startup_id: startup.id,
+        message: message || 'Interested in investing',
+      });
+      setSent(true);
+      toast.success('Interest sent to founder!');
+    } catch (e) {
+      toast.error('Failed to send interest');
+    }
+    setSending(false);
+  };
+
+  return (
+    <Card className="glass-card border-green-500/30">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><Mail className="h-4 w-4 text-green-500" /> Connect with Founder</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">{startup.founder_name}</p>
+            {startup.founder_email && (
+              <a href={`mailto:${startup.founder_email}`} className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5">
+                <Mail className="h-3 w-3" /> {startup.founder_email}
+              </a>
+            )}
+            {startup.linkedin_url && (
+              <a href={startup.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                LinkedIn Profile
+              </a>
+            )}
+          </div>
+          <div className="space-y-2">
+            {sent ? (
+              <div className="flex items-center gap-2 p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <div>
+                  <p className="text-sm font-semibold text-green-400">Interest Sent!</p>
+                  <p className="text-xs text-muted-foreground">The founder will be notified</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Textarea
+                  placeholder="Write a message to the founder (optional)..."
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  rows={2}
+                  className="text-sm"
+                />
+                <Button onClick={handleSend} disabled={sending} className="w-full bg-green-600 hover:bg-green-700">
+                  <Send className="h-4 w-4 mr-2" />
+                  {sending ? 'Sending...' : 'Express Interest'}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function InvestorView() {
   const navigate = useNavigate();
   const [startups, setStartups] = useState([]);
@@ -566,6 +640,9 @@ function InvestorView() {
                 ))}
               </CardContent>
             </Card>
+
+            {/* Connect with Founder */}
+            <ConnectCard startup={selectedStartup} />
           </div>
         ) : null}
       </div>
