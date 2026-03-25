@@ -60,23 +60,25 @@ export function AuthProvider({ children }) {
   }, []);
 
   const isAuthenticated = !!user && !!token;
-  const profile = user ? { full_name: user.full_name, email: user.email } : null;
 
-  const value = useMemo(() => ({
-    user,
-    profile,
-    token,
-    loading,
-    isAuthenticated,
-    simulations,
-    currentSimulation,
-    setCurrentSimulation,
-    login,
-    updateUser,
-    getAuthHeaders,
-    signOut,
-    refreshSimulations,
-  }), [user, profile, token, loading, isAuthenticated, simulations, currentSimulation, login, updateUser, getAuthHeaders, signOut, refreshSimulations]);
+  const value = useMemo(() => {
+    const profile = user ? { full_name: user.full_name, email: user.email } : null;
+    return {
+      user,
+      profile,
+      token,
+      loading,
+      isAuthenticated,
+      simulations,
+      currentSimulation,
+      setCurrentSimulation,
+      login,
+      updateUser,
+      getAuthHeaders,
+      signOut,
+      refreshSimulations,
+    };
+  }, [user, token, loading, isAuthenticated, simulations, currentSimulation, login, updateUser, getAuthHeaders, signOut, refreshSimulations]);
 
   return (
     <AuthContext.Provider value={value}>
