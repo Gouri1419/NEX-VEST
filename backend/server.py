@@ -238,7 +238,7 @@ async def _fetch_github_data(username: str):
 def _compute_trust_score(github_data):
     """Compute a Trust Score (0-100) from GitHub profile data."""
     if not github_data:
-        return 0, "No GitHub data available"
+        return 0, ["No GitHub data available"]
 
     score = 0
     reasons = []
@@ -400,7 +400,12 @@ async def register_startup(data: StartupRegister, token: str = ""):
     trust_score = 0
     trust_reasons = []
     if data.github_username:
-        github_data = await _fetch_github_data(data.github_username)
+        # Strip GitHub URL prefix if user pasted a full URL
+        gh_user = data.github_username.strip().rstrip("/")
+        if "github.com/" in gh_user:
+            gh_user = gh_user.split("github.com/")[-1].split("/")[0]
+        data.github_username = gh_user
+        github_data = await _fetch_github_data(gh_user)
         trust_score, trust_reasons = _compute_trust_score(github_data)
 
     # AI Agent scoring (boosted by GitHub trust score)
