@@ -230,7 +230,60 @@ function StartupFounderForm({ onRun, loading }) {
           </span>
         ) : 'Launch Simulation'}
       </Button>
+
+      {/* Investor Interests */}
+      <InvestorInterests />
     </div>
+  );
+}
+
+
+// ==================== INVESTOR INTERESTS — Founders see who's interested ====================
+function InvestorInterests() {
+  const [interests, setInterests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInterests = async () => {
+      try {
+        const token = sessionStorage.getItem('nexvest_token') || '';
+        const res = await axios.get(`${API}/my-interests?token=${token}`);
+        setInterests(res.data);
+      } catch { /* no interests yet */ }
+      setLoading(false);
+    };
+    fetchInterests();
+  }, []);
+
+  if (loading) return null;
+  if (interests.length === 0) return null;
+
+  return (
+    <Card className="glass-card border-green-500/30">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Mail className="h-4 w-4 text-green-500" /> Investor Interests
+          <Badge className="bg-green-500/20 text-green-400 ml-auto">{interests.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {interests.map((interest, i) => (
+          <div key={i} className="p-3 rounded-lg bg-muted/50 border border-border/30 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">{interest.investor_name}</p>
+              <p className="text-xs text-muted-foreground">{new Date(interest.created_at).toLocaleDateString()}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">For: {interest.startup_name}</p>
+            <a href={`mailto:${interest.investor_email}`} className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              <Mail className="h-3 w-3" /> {interest.investor_email}
+            </a>
+            {interest.message && (
+              <p className="text-xs text-muted-foreground italic mt-1">"{interest.message}"</p>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
