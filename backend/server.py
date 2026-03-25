@@ -4,24 +4,38 @@ import logging
 import uuid
 import json
 import httpx
+import os
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+from supabase import create_client
 
 from simulation.engine import SimulationEngine
 
-app = FastAPI(title="AI Startup Ecosystem Simulator", version="1.0.0")
+load_dotenv()
+
+app = FastAPI(title="NexVest API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ==================== IN-MEMORY STORAGE ====================
-# No database needed! Everything stored in memory.
+# ==================== SUPABASE ====================
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+if supabase:
+    logger.info("Connected to Supabase")
+else:
+    logger.warning("Supabase not configured — falling back to in-memory storage")
+
+# ==================== IN-MEMORY FALLBACK ====================
 simulations_db = {}  # {id: simulation_data}
 users_db = {}  # {email: user_data}
 sessions_db = {}  # {token: user_email}
-startups_db = {}  # {id: startup_data}  — registered by startup founders
+startups_db = {}  # {id: startup_data}
 
 # ==================== CORS ====================
 app.add_middleware(
@@ -66,19 +80,29 @@ class LoginRequest(BaseModel):
 @api_router.post("/auth/signup")
 async def signup(data: SignupRequest):
     """Register a new user."""
-    if data.email in users_db:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user_id = str(uuid.uuid4())
-    token = str(uuid.uuid4())
-    users_db[data.email] = {
-        "id": user_id,
-        "full_name": data.full_name,
-        "email": data.email,
-        "password": data.password,  # In production, hash this!
-        "role": None,  # Set after role selection
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    sessions_db[token] = data.email
+    if supabase:
+        # Check if email exists
+        existing = supabase.table("users").select("id").eq("email", data.email).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user_id = str(uuid.uuid4())
+        token = str(uuid.uuid4())
+        supabase.table("users").insert({
+            "id": user_id, "full_name": data.full_name,
+            "email": data.email, "password": data.password, "role": None,
+        }).execute()
+        supabase.table("sessions").insert({"token": token, "user_email": data.email}).execute()
+    else:
+        if data.email in users_db:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user_id = str(uuid.uuid4())
+        token = str(uuid.uuid4())
+        users_db[data.email] = {
+            "id": user_id, "full_name": data.full_name, "email": data.email,
+            "password": data.password, "role": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        sessions_db[token] = data.email
     logger.info(f"User signed up: {data.email}")
     return {"token": token, "user": {"id": user_id, "full_name": data.full_name, "email": data.email, "role": None}}
 
@@ -86,13 +110,21 @@ async def signup(data: SignupRequest):
 @api_router.post("/auth/login")
 async def login(data: LoginRequest):
     """Login an existing user."""
-    user = users_db.get(data.email)
-    if not user or user["password"] != data.password:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = str(uuid.uuid4())
-    sessions_db[token] = data.email
+    if supabase:
+        result = supabase.table("users").select("*").eq("email", data.email).execute()
+        if not result.data or result.data[0]["password"] != data.password:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        user = result.data[0]
+        token = str(uuid.uuid4())
+        supabase.table("sessions").insert({"token": token, "user_email": data.email}).execute()
+    else:
+        user = users_db.get(data.email)
+        if not user or user["password"] != data.password:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        token = str(uuid.uuid4())
+        sessions_db[token] = data.email
     logger.info(f"User logged in: {data.email}")
-    return {"token": token, "user": {"id": user["id"], "full_name": user["full_name"], "email": user["email"], "role": user["role"]}}
+    return {"token": token, "user": {"id": user["id"], "full_name": user["full_name"], "email": user["email"], "role": user.get("role")}}
 
 
 @api_router.post("/auth/role")
@@ -100,24 +132,43 @@ async def set_role(request: dict):
     """Set user role (startup_founder or investor)."""
     token = request.get("token")
     role = request.get("role")
-    if token not in sessions_db:
-        raise HTTPException(status_code=401, detail="Invalid session")
     if role not in ("startup_founder", "investor"):
         raise HTTPException(status_code=400, detail="Role must be 'startup_founder' or 'investor'")
-    email = sessions_db[token]
-    users_db[email]["role"] = role
-    user = users_db[email]
+    if supabase:
+        session = supabase.table("sessions").select("user_email").eq("token", token).execute()
+        if not session.data:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        email = session.data[0]["user_email"]
+        supabase.table("users").update({"role": role}).eq("email", email).execute()
+        result = supabase.table("users").select("*").eq("email", email).execute()
+        user = result.data[0]
+    else:
+        if token not in sessions_db:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        email = sessions_db[token]
+        users_db[email]["role"] = role
+        user = users_db[email]
     return {"user": {"id": user["id"], "full_name": user["full_name"], "email": user["email"], "role": role}}
 
 
 @api_router.get("/auth/me")
 async def get_me(token: str = ""):
     """Get current user from token."""
-    if token not in sessions_db:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    email = sessions_db[token]
-    user = users_db[email]
-    return {"id": user["id"], "full_name": user["full_name"], "email": user["email"], "role": user["role"]}
+    if supabase:
+        session = supabase.table("sessions").select("user_email").eq("token", token).execute()
+        if not session.data:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        email = session.data[0]["user_email"]
+        result = supabase.table("users").select("*").eq("email", email).execute()
+        if not result.data:
+            raise HTTPException(status_code=401, detail="User not found")
+        user = result.data[0]
+    else:
+        if token not in sessions_db:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        email = sessions_db[token]
+        user = users_db[email]
+    return {"id": user["id"], "full_name": user["full_name"], "email": user["email"], "role": user.get("role")}
 
 
 # ==================== STARTUP REGISTRATION ====================
@@ -331,11 +382,18 @@ def _compute_competition_level(data):
 @api_router.post("/startups/register")
 async def register_startup(data: StartupRegister, token: str = ""):
     """Startup founder registers their startup. AI agents score idea, market, and team."""
-    if token and token in sessions_db:
-        email = sessions_db[token]
-        founder = users_db.get(email, {})
-    else:
-        founder = {}
+    founder = {}
+    if token:
+        if supabase:
+            session = supabase.table("sessions").select("user_email").eq("token", token).execute()
+            if session.data:
+                email = session.data[0]["user_email"]
+                user_res = supabase.table("users").select("*").eq("email", email).execute()
+                if user_res.data:
+                    founder = user_res.data[0]
+        elif token in sessions_db:
+            email = sessions_db[token]
+            founder = users_db.get(email, {})
 
     # Fetch GitHub data if username provided
     github_data = None
@@ -382,7 +440,12 @@ async def register_startup(data: StartupRegister, token: str = ""):
         "funding_received": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    startups_db[startup_id] = startup
+
+    if supabase:
+        supabase.table("startups").insert(startup).execute()
+    else:
+        startups_db[startup_id] = startup
+
     logger.info(f"Startup registered: {data.name} ({startup_id})")
     return {"id": startup_id, "startup": startup}
 
@@ -390,6 +453,9 @@ async def register_startup(data: StartupRegister, token: str = ""):
 @api_router.get("/startups")
 async def list_startups():
     """List all registered startups (for investors to browse)."""
+    if supabase:
+        result = supabase.table("startups").select("*").order("created_at", desc=True).execute()
+        return result.data
     startups = sorted(startups_db.values(), key=lambda x: x["created_at"], reverse=True)
     return startups
 
@@ -397,6 +463,11 @@ async def list_startups():
 @api_router.get("/startups/{startup_id}")
 async def get_startup(startup_id: str):
     """Get a single startup's details."""
+    if supabase:
+        result = supabase.table("startups").select("*").eq("id", startup_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Startup not found")
+        return result.data[0]
     if startup_id not in startups_db:
         raise HTTPException(status_code=404, detail="Startup not found")
     return startups_db[startup_id]
@@ -405,14 +476,19 @@ async def get_startup(startup_id: str):
 @api_router.get("/startups/{startup_id}/analyze")
 async def analyze_startup(startup_id: str):
     """Run AI agent analysis on a startup — Risk Agent + Market Agent + Investor Agent."""
-    if startup_id not in startups_db:
-        raise HTTPException(status_code=404, detail="Startup not found")
-
     from agents.risk_agent import RiskAgent
     from agents.market_agent import MarketAgent
     from agents.investor_agent import InvestorAgent
 
-    startup = startups_db[startup_id]
+    if supabase:
+        result = supabase.table("startups").select("*").eq("id", startup_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Startup not found")
+        startup = result.data[0]
+    else:
+        if startup_id not in startups_db:
+            raise HTTPException(status_code=404, detail="Startup not found")
+        startup = startups_db[startup_id]
 
     # Step 1: Market Agent — analyze market conditions
     market_agent = MarketAgent()
