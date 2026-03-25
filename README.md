@@ -37,8 +37,8 @@ Fetches public GitHub data and computes a trust score based on:
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React, Tailwind CSS, shadcn/ui, Recharts |
-| Backend | FastAPI (Python), Uvicorn |
+| Frontend | React, Tailwind CSS |
+| Backend | FastAPI (Python) |
 | Database | Supabase (PostgreSQL) |
 | AI Agents | Custom multi-agent system (Risk, Market, Investor agents) |
 | External APIs | GitHub REST API (public, no auth needed) |
