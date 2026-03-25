@@ -1,0 +1,67 @@
+/* AI Startup Simulator custom styles */
+.glass-card {
+    @apply bg-background/40 backdrop-blur-xl border border-border/50 shadow-sm rounded-2xl;
+}
+
+.glass-sidebar {
+    @apply bg-background/95 backdrop-blur-xl border-r border-border/40;
+}
+
+@supports (backdrop-filter: blur(12px)) {
+    .glass-sidebar {
+        @apply bg-background/60;
+    }
+}
+
+.btn-primary {
+    @apply bg-primary text-primary-foreground shadow hover:bg-primary/90 rounded-full font-semibold transition-all duration-200 hover:scale-105 active:scale-95;
+}
+
+.stat-card {
+    @apply glass-card p-6 transition-all duration-300 hover:shadow-lg hover:border-primary/20;
+}
+
+.agent-card {
+    @apply glass-card p-5 transition-all duration-300 hover:shadow-lg hover:border-primary/30 cursor-pointer;
+}
+
+.risk-low { @apply border-green-500/30 bg-green-500/5; }
+.risk-moderate { @apply border-yellow-500/30 bg-yellow-500/5; }
+.risk-high { @apply border-orange-500/30 bg-orange-500/5; }
+.risk-very_high { @apply border-red-500/30 bg-red-500/5; }
+.risk-critical { @apply border-red-700/30 bg-red-700/5; }
+
+.pulse-dot {
+    @apply w-2 h-2 rounded-full;
+    animation: pulse 2s infinite;
+}
+
+.pulse-dot.running { @apply bg-green-500; }
+.pulse-dot.pending { @apply bg-yellow-500; }
+.pulse-dot.completed { @apply bg-blue-500; }
+.pulse-dot.failed { @apply bg-red-500; }
+
+.fade-in {
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
